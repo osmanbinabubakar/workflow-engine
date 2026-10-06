@@ -1,16 +1,16 @@
 import Database from "better-sqlite3";
 
 export class WorkflowDatabase {
-  private db: Database.Database;
+    private db: Database.Database;
 
-  constructor(filename = "workflow.db") {
-    this.db = new Database(filename);
+    constructor(filename = "workflow.db") {
+        this.db = new Database(filename);
 
-    this.initialize();
-  }
+        this.initialize();
+    }
 
-  private initialize(): void {
-    this.db.exec(`
+    private initialize(): void {
+        this.db.exec(`
       CREATE TABLE IF NOT EXISTS workflows (
         id TEXT PRIMARY KEY,
         definition TEXT NOT NULL
@@ -31,111 +31,111 @@ export class WorkflowDatabase {
         timestamp TEXT NOT NULL
       );
     `);
-  }
+    }
 
-  saveWorkflow(id: string, definition: unknown): void {
-    this.db
-      .prepare(
-        `
+    saveWorkflow(id: string, definition: unknown): void {
+        this.db
+            .prepare(
+                `
         INSERT INTO workflows (id, definition)
         VALUES (?, ?)
         `
-      )
-      .run(id, JSON.stringify(definition));
-  }
+            )
+            .run(id, JSON.stringify(definition));
+    }
 
-  getWorkflow(id: string): unknown | undefined {
-    const row = this.db
-      .prepare(
-        `
+    getWorkflow(id: string): unknown | undefined {
+        const row = this.db
+            .prepare(
+                `
         SELECT definition
         FROM workflows
         WHERE id = ?
         `
-      )
-      .get(id) as { definition: string } | undefined;
+            )
+            .get(id) as { definition: string } | undefined;
 
-    if (!row) {
-      return undefined;
+        if (!row) {
+            return undefined;
+        }
+
+        return JSON.parse(row.definition);
     }
 
-    return JSON.parse(row.definition);
-  }
-
-  saveInstance(
-    id: string,
-    workflowId: string,
-    currentState: string
-  ): void {
-    this.db
-      .prepare(
-        `
+    saveInstance(
+        id: string,
+        workflowId: string,
+        currentState: string
+    ): void {
+        this.db
+            .prepare(
+                `
         INSERT INTO instances (id, workflow_id, current_state)
         VALUES (?, ?, ?)
         `
-      )
-      .run(id, workflowId, currentState);
-  }
+            )
+            .run(id, workflowId, currentState);
+    }
 
-  updateInstanceState(
-    id: string,
-    currentState: string
-  ): void {
-    this.db
-      .prepare(
-        `
+    updateInstanceState(
+        id: string,
+        currentState: string
+    ): void {
+        this.db
+            .prepare(
+                `
         UPDATE instances
         SET current_state = ?
         WHERE id = ?
         `
-      )
-      .run(currentState, id);
-  }
+            )
+            .run(currentState, id);
+    }
 
-  getInstance(id: string):
-    | {
-        id: string;
-        workflowId: string;
-        currentState: string;
-      }
-    | undefined {
-    const row = this.db
-      .prepare(
-        `
+    getInstance(id: string):
+        | {
+            id: string;
+            workflowId: string;
+            currentState: string;
+        }
+        | undefined {
+        const row = this.db
+            .prepare(
+                `
         SELECT id, workflow_id, current_state
         FROM instances
         WHERE id = ?
         `
-      )
-      .get(id) as
-      | {
-          id: string;
-          workflow_id: string;
-          current_state: string;
-        }
-      | undefined;
+            )
+            .get(id) as
+            | {
+                id: string;
+                workflow_id: string;
+                current_state: string;
+            }
+            | undefined;
 
-    if (!row) {
-      return undefined;
+        if (!row) {
+            return undefined;
+        }
+
+        return {
+            id: row.id,
+            workflowId: row.workflow_id,
+            currentState: row.current_state,
+        };
     }
 
-    return {
-      id: row.id,
-      workflowId: row.workflow_id,
-      currentState: row.current_state,
-    };
-  }
-
-  saveHistory(
-    instanceId: string,
-    transitionId: string,
-    fromState: string,
-    toState: string,
-    timestamp: Date
-  ): void {
-    this.db
-      .prepare(
-        `
+    saveHistory(
+        instanceId: string,
+        transitionId: string,
+        fromState: string,
+        toState: string,
+        timestamp: Date
+    ): void {
+        this.db
+            .prepare(
+                `
         INSERT INTO history (
           instance_id,
           transition_id,
@@ -145,25 +145,25 @@ export class WorkflowDatabase {
         )
         VALUES (?, ?, ?, ?, ?)
         `
-      )
-      .run(
-        instanceId,
-        transitionId,
-        fromState,
-        toState,
-        timestamp.toISOString()
-      );
-  }
+            )
+            .run(
+                instanceId,
+                transitionId,
+                fromState,
+                toState,
+                timestamp.toISOString()
+            );
+    }
 
-  getHistory(instanceId: string): Array<{
-    transitionId: string;
-    fromState: string;
-    toState: string;
-    timestamp: Date;
-  }> {
-    const rows = this.db
-      .prepare(
-        `
+    getHistory(instanceId: string): Array<{
+        transitionId: string;
+        fromState: string;
+        toState: string;
+        timestamp: Date;
+    }> {
+        const rows = this.db
+            .prepare(
+                `
         SELECT
           transition_id,
           from_state,
@@ -173,59 +173,59 @@ export class WorkflowDatabase {
         WHERE instance_id = ?
         ORDER BY id ASC
         `
-      )
-      .all(instanceId) as Array<{
-        transition_id: string;
-        from_state: string;
-        to_state: string;
-        timestamp: string;
-      }>;
+            )
+            .all(instanceId) as Array<{
+                transition_id: string;
+                from_state: string;
+                to_state: string;
+                timestamp: string;
+            }>;
 
-    return rows.map((row) => ({
-      transitionId: row.transition_id,
-      fromState: row.from_state,
-      toState: row.to_state,
-      timestamp: new Date(row.timestamp),
-    }));
-  }
+        return rows.map((row) => ({
+            transitionId: row.transition_id,
+            fromState: row.from_state,
+            toState: row.to_state,
+            timestamp: new Date(row.timestamp),
+        }));
+    }
 
-  getWorkflows(): unknown[] {
-  const rows = this.db
-    .prepare(
-      `
+    getWorkflows(): unknown[] {
+        const rows = this.db
+            .prepare(
+                `
       SELECT definition
       FROM workflows
       `
-    )
-    .all() as Array<{
-      definition: string;
-    }>;
+            )
+            .all() as Array<{
+                definition: string;
+            }>;
 
-  return rows.map((row) => JSON.parse(row.definition));
-}
+        return rows.map((row) => JSON.parse(row.definition));
+    }
 
-getInstances(): Array<{
-  id: string;
-  workflowId: string;
-  currentState: string;
-}> {
-  const rows = this.db
-    .prepare(
-      `
+    getInstances(): Array<{
+        id: string;
+        workflowId: string;
+        currentState: string;
+    }> {
+        const rows = this.db
+            .prepare(
+                `
       SELECT id, workflow_id, current_state
       FROM instances
       `
-    )
-    .all() as Array<{
-      id: string;
-      workflow_id: string;
-      current_state: string;
-    }>;
+            )
+            .all() as Array<{
+                id: string;
+                workflow_id: string;
+                current_state: string;
+            }>;
 
-  return rows.map((row) => ({
-    id: row.id,
-    workflowId: row.workflow_id,
-    currentState: row.current_state,
-  }));
-}
+        return rows.map((row) => ({
+            id: row.id,
+            workflowId: row.workflow_id,
+            currentState: row.current_state,
+        }));
+    }
 }

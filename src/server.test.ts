@@ -1,221 +1,269 @@
 import { describe, expect, it } from "vitest";
-import Fastify from "fastify";
-import { WorkflowEngine } from "./index";
+import { createApp } from "./server";
+import { WorkflowDatabase } from "./database";
 
-function createTestApp() {
-  const app = Fastify();
-  const engine = new WorkflowEngine();
-
-  app.post("/workflows", async (request, reply) => {
-    const workflow = request.body as Parameters<
-      WorkflowEngine["registerWorkflow"]
-    >[0];
-
-    try {
-      engine.registerWorkflow(workflow);
-
-      return reply.code(201).send({
-        message: "Workflow registered",
-        workflowId: workflow.id,
-      });
-    } catch (error) {
-      return reply.code(400).send({
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  });
-
-  app.post("/instances", async (request, reply) => {
-    const body = request.body as {
-      workflowId: string;
-      instanceId: string;
-    };
-
-    try {
-      return reply
-        .code(201)
-        .send(engine.createInstance(body.workflowId, body.instanceId));
-    } catch (error) {
-      return reply.code(400).send({
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  });
-
-  app.post("/instances/:id/transitions", async (request, reply) => {
-    const params = request.params as { id: string };
-    const body = request.body as { transitionId: string };
-
-    try {
-      engine.transition(params.id, body.transitionId);
-      return reply.send(engine.getInstance(params.id));
-    } catch (error) {
-      return reply.code(400).send({
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  });
-
-  app.get("/instances/:id", async (request, reply) => {
-    const params = request.params as { id: string };
-
-    try {
-      return reply.send(engine.getInstance(params.id));
-    } catch (error) {
-      return reply.code(404).send({
-        error: error instanceof Error ? error.message : "Unknown error",
-      });
-    }
-  });
-
-  app.get("/instances/:id/history", async (request, reply) => {
-    const params = request.params as { id: string };
-
-    return reply.send(engine.getHistory(params.id));
-  });
-
-  return app;
-}
 
 describe("Workflow API", () => {
-  it("registers a workflow", async () => {
-    const app = createTestApp();
+    it("registers a workflow", async () => {
+        const app = createApp(new WorkflowDatabase(":memory:"));
 
-    const response = await app.inject({
-      method: "POST",
-      url: "/workflows",
-      payload: {
-        id: "approval",
-        name: "Approval Workflow",
-        initialState: "submitted",
-        states: [
-          { id: "submitted", name: "Submitted" },
-          { id: "approved", name: "Approved" },
-        ],
-        transitions: [
-          {
-            id: "approve",
-            from: "submitted",
-            to: "approved",
-          },
-        ],
-      },
+        const response = await app.inject({
+            method: "POST",
+            url: "/workflows",
+            payload: {
+                id: "approval",
+                name: "Approval Workflow",
+                initialState: "submitted",
+                states: [
+                    { id: "submitted", name: "Submitted" },
+                    { id: "approved", name: "Approved" },
+                ],
+                transitions: [
+                    {
+                        id: "approve",
+                        from: "submitted",
+                        to: "approved",
+                    },
+                ],
+            },
+        });
+
+        expect(response.statusCode).toBe(201);
+        expect(response.json()).toEqual({
+            message: "Workflow registered",
+            workflowId: "approval",
+        });
+
+        await app.close();
     });
 
-    expect(response.statusCode).toBe(201);
-    expect(response.json()).toEqual({
-      message: "Workflow registered",
-      workflowId: "approval",
+    it("creates an instance and transitions it", async () => {
+        const app = createApp(new WorkflowDatabase(":memory:"));
+
+        await app.inject({
+            method: "POST",
+            url: "/workflows",
+            payload: {
+                id: "approval",
+                name: "Approval Workflow",
+                initialState: "submitted",
+                states: [
+                    { id: "submitted", name: "Submitted" },
+                    { id: "approved", name: "Approved" },
+                ],
+                transitions: [
+                    {
+                        id: "approve",
+                        from: "submitted",
+                        to: "approved",
+                    },
+                ],
+            },
+        });
+
+        const instanceResponse = await app.inject({
+            method: "POST",
+            url: "/instances",
+            payload: {
+                workflowId: "approval",
+                instanceId: "REQ-1001",
+            },
+        });
+
+        expect(instanceResponse.statusCode).toBe(201);
+        expect(instanceResponse.json().currentState).toBe("submitted");
+
+        const transitionResponse = await app.inject({
+            method: "POST",
+            url: "/instances/REQ-1001/transitions",
+            payload: {
+                transitionId: "approve",
+            },
+        });
+
+        expect(transitionResponse.statusCode).toBe(200);
+        expect(transitionResponse.json().currentState).toBe("approved");
+
+        await app.close();
     });
 
-    await app.close();
-  });
+    it("returns transition history", async () => {
+        const app = createApp(new WorkflowDatabase(":memory:"));
 
-  it("creates an instance and transitions it", async () => {
-    const app = createTestApp();
+        await app.inject({
+            method: "POST",
+            url: "/workflows",
+            payload: {
+                id: "approval",
+                name: "Approval Workflow",
+                initialState: "submitted",
+                states: [
+                    { id: "submitted", name: "Submitted" },
+                    { id: "approved", name: "Approved" },
+                ],
+                transitions: [
+                    {
+                        id: "approve",
+                        from: "submitted",
+                        to: "approved",
+                    },
+                ],
+            },
+        });
 
-    await app.inject({
-      method: "POST",
-      url: "/workflows",
-      payload: {
-        id: "approval",
-        name: "Approval Workflow",
-        initialState: "submitted",
-        states: [
-          { id: "submitted", name: "Submitted" },
-          { id: "approved", name: "Approved" },
-        ],
-        transitions: [
-          {
-            id: "approve",
-            from: "submitted",
-            to: "approved",
-          },
-        ],
-      },
+        await app.inject({
+            method: "POST",
+            url: "/instances",
+            payload: {
+                workflowId: "approval",
+                instanceId: "REQ-1002",
+            },
+        });
+
+        await app.inject({
+            method: "POST",
+            url: "/instances/REQ-1002/transitions",
+            payload: {
+                transitionId: "approve",
+            },
+        });
+
+        const response = await app.inject({
+            method: "GET",
+            url: "/instances/REQ-1002/history",
+        });
+
+        expect(response.statusCode).toBe(200);
+
+        const history = response.json();
+
+        expect(history).toHaveLength(1);
+        expect(history[0].transitionId).toBe("approve");
+        expect(history[0].fromState).toBe("submitted");
+        expect(history[0].toState).toBe("approved");
+
+        await app.close();
     });
 
-    const instanceResponse = await app.inject({
-      method: "POST",
-      url: "/instances",
-      payload: {
-        workflowId: "approval",
-        instanceId: "REQ-1001",
-      },
+    it("rejects an invalid workflow definition", async () => {
+        const app = createApp(new WorkflowDatabase(":memory:"));
+
+        const response = await app.inject({
+            method: "POST",
+            url: "/workflows",
+            payload: {
+                id: "invalid-workflow",
+                name: "Invalid Workflow",
+            },
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toEqual({
+            error: "Invalid workflow definition",
+        });
+
+        await app.close();
     });
 
-    expect(instanceResponse.statusCode).toBe(201);
-    expect(instanceResponse.json().currentState).toBe("submitted");
+    it("rejects a workflow with invalid states", async () => {
+        const app = createApp(new WorkflowDatabase(":memory:"));
 
-    const transitionResponse = await app.inject({
-      method: "POST",
-      url: "/instances/REQ-1001/transitions",
-      payload: {
-        transitionId: "approve",
-      },
+        const response = await app.inject({
+            method: "POST",
+            url: "/workflows",
+            payload: {
+                id: "invalid-workflow",
+                name: "Invalid Workflow",
+                initialState: "submitted",
+                states: "not-an-array",
+                transitions: [],
+            },
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toEqual({
+            error: "Invalid workflow definition",
+        });
+
+        await app.close();
     });
 
-    expect(transitionResponse.statusCode).toBe(200);
-    expect(transitionResponse.json().currentState).toBe("approved");
+    it("rejects a workflow with an invalid initial state", async () => {
+        const app = createApp(new WorkflowDatabase(":memory:"));
 
-    await app.close();
-  });
+        const response = await app.inject({
+            method: "POST",
+            url: "/workflows",
+            payload: {
+                id: "invalid-initial-state",
+                name: "Invalid Workflow",
+                initialState: "missing",
+                states: [
+                    { id: "submitted", name: "Submitted" },
+                ],
+                transitions: [],
+            },
+        });
 
-  it("returns transition history", async () => {
-    const app = createTestApp();
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toEqual({
+            error: "Invalid workflow definition",
+        });
 
-    await app.inject({
-      method: "POST",
-      url: "/workflows",
-      payload: {
-        id: "approval",
-        name: "Approval Workflow",
-        initialState: "submitted",
-        states: [
-          { id: "submitted", name: "Submitted" },
-          { id: "approved", name: "Approved" },
-        ],
-        transitions: [
-          {
-            id: "approve",
-            from: "submitted",
-            to: "approved",
-          },
-        ],
-      },
+        await app.close();
     });
 
-    await app.inject({
-      method: "POST",
-      url: "/instances",
-      payload: {
-        workflowId: "approval",
-        instanceId: "REQ-1002",
-      },
+    it("rejects a workflow with a transition referencing an unknown state", async () => {
+        const app = createApp(new WorkflowDatabase(":memory:"));
+
+        const response = await app.inject({
+            method: "POST",
+            url: "/workflows",
+            payload: {
+                id: "invalid-transition-state",
+                name: "Invalid Workflow",
+                initialState: "submitted",
+                states: [
+                    { id: "submitted", name: "Submitted" },
+                ],
+                transitions: [
+                    {
+                        id: "approve",
+                        from: "submitted",
+                        to: "approved",
+                    },
+                ],
+            },
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toEqual({
+            error: "Invalid workflow definition",
+        });
+
+        await app.close();
     });
 
-    await app.inject({
-      method: "POST",
-      url: "/instances/REQ-1002/transitions",
-      payload: {
-        transitionId: "approve",
-      },
+    it("rejects a workflow with no states", async () => {
+        const app = createApp(new WorkflowDatabase(":memory:"));
+
+        const response = await app.inject({
+            method: "POST",
+            url: "/workflows",
+            payload: {
+                id: "empty-workflow",
+                name: "Empty Workflow",
+                initialState: "submitted",
+                states: [],
+                transitions: [],
+            },
+        });
+
+        expect(response.statusCode).toBe(400);
+        expect(response.json()).toEqual({
+            error: "Invalid workflow definition",
+        });
+
+        await app.close();
     });
-
-    const response = await app.inject({
-      method: "GET",
-      url: "/instances/REQ-1002/history",
-    });
-
-    expect(response.statusCode).toBe(200);
-
-    const history = response.json();
-
-    expect(history).toHaveLength(1);
-    expect(history[0].transitionId).toBe("approve");
-    expect(history[0].fromState).toBe("submitted");
-    expect(history[0].toState).toBe("approved");
-
-    await app.close();
-  });
 });
