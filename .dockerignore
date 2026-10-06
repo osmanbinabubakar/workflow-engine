@@ -1,0 +1,8 @@
+node_modules
+workflow.db
+*.db
+.git
+.gitignore
+README.md
+coverage
+dist
