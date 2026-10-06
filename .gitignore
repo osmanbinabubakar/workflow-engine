@@ -1,0 +1,7 @@
+node_modules/
+workflow.db
+*.db
+.env
+.env.*
+dist/
+coverage/
