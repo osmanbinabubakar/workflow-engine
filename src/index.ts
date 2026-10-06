@@ -39,7 +39,36 @@ export class WorkflowEngine {
   private instances = new Map<string, WorkflowInstance>();
   private history = new Map<string, WorkflowHistoryEntry[]>();
 
-  constructor(private database?: WorkflowDatabase) {}
+  constructor(private database?: WorkflowDatabase) {
+    if (this.database) {
+      this.loadPersistedState();
+    }
+  }
+
+  private loadPersistedState(): void {
+    if (!this.database) {
+      return;
+    }
+
+    const workflows = this.database.getWorkflows() as WorkflowDefinition[];
+
+    for (const workflow of workflows) {
+      this.definitions.set(workflow.id, workflow);
+    }
+
+    const instances = this.database.getInstances();
+
+    for (const instance of instances) {
+      this.instances.set(instance.id, instance);
+    }
+
+    for (const instance of instances) {
+      this.history.set(
+        instance.id,
+        this.database.getHistory(instance.id)
+      );
+    }
+  }
 
   registerWorkflow(definition: WorkflowDefinition): void {
     if (this.definitions.has(definition.id)) {
@@ -150,7 +179,7 @@ export class WorkflowEngine {
     return this.history.get(instanceId) ?? [];
   }
 
-  getInstance(instanceId: string): WorkflowInstance{
+  getInstance(instanceId: string): WorkflowInstance {
     const instance = this.instances.get(instanceId);
 
     if (!instance) {

@@ -1,11 +1,13 @@
 import Fastify from "fastify";
 import { WorkflowEngine } from "./index";
+import { WorkflowDatabase } from "./database";
 
 const app = Fastify({
   logger: true,
 });
 
-const engine = new WorkflowEngine();
+const database = new WorkflowDatabase();
+const engine = new WorkflowEngine(database);
 
 app.get("/health", async () => {
   return {

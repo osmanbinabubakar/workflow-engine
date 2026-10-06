@@ -188,4 +188,44 @@ export class WorkflowDatabase {
       timestamp: new Date(row.timestamp),
     }));
   }
+
+  getWorkflows(): unknown[] {
+  const rows = this.db
+    .prepare(
+      `
+      SELECT definition
+      FROM workflows
+      `
+    )
+    .all() as Array<{
+      definition: string;
+    }>;
+
+  return rows.map((row) => JSON.parse(row.definition));
+}
+
+getInstances(): Array<{
+  id: string;
+  workflowId: string;
+  currentState: string;
+}> {
+  const rows = this.db
+    .prepare(
+      `
+      SELECT id, workflow_id, current_state
+      FROM instances
+      `
+    )
+    .all() as Array<{
+      id: string;
+      workflow_id: string;
+      current_state: string;
+    }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    workflowId: row.workflow_id,
+    currentState: row.current_state,
+  }));
+}
 }
